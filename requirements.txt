@@ -1,0 +1,13 @@
+attrs
+black==22.10.0
+flake8
+frozendict
+mypy
+mysqlclient
+pandas
+pika
+pyyaml
+retrying
+tabulate
+titanpublic @ git+https://github.com/gaffney2010/titan-public.git#egg=titanpublic-1.18.2
+tqdm
