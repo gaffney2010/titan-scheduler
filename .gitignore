@@ -1,2 +1,4 @@
 secrets.yaml
 dags
+.mypy_cache
+__pycache__

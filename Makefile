@@ -4,3 +4,6 @@ check:
 
 fmt:
 	python -m black --preview .
+
+build:
+	docker build --tag=titan:3.x.x .

@@ -252,7 +252,7 @@ class MaterializedNode(AbstractNode):
         return lookups.game_detail_lookup()[self.game_hash]
 
     def send_rabbit_msg(self) -> None:
-        msg = "".join(
+        msg = " ".join(
             [
                 os.environ["SPORT"],
                 self.feature_node.name,

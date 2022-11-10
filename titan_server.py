@@ -89,6 +89,7 @@ def add_pseudo_dependency(
     this_node: nodes.AbstractNode,
     dependent_feature: Feature,
     dependent_hashes: List[GameHash],
+    materialized_nodes: Dict[Tuple[Feature, GameHash], nodes.MaterializedNode],
     pseudo_nodes: Dict[int, nodes.PseudoNode],
 ) -> MatNodeName:
     node_key = _pseudo_node_key(dependent_feature, dependent_hashes)
@@ -134,6 +135,7 @@ def add_dependencies(
                     this_node,
                     dependent_feature,
                     dependent_hashes,
+                    materialized_nodes,
                     pseudo_nodes,
                 )
             )
@@ -273,17 +275,17 @@ def process_message(body, materialized_nodes) -> None:
 if __name__ == "__main__":
     sport = os.environ.get("SPORT")
     if "ncaam" == sport:
-        import ncaam
+        from dags import ncaam
 
         dag = ncaam.graph
 
     if "ncaaw" == sport:
-        import ncaaw
+        from dags import ncaaw
 
         dag = ncaaw.graph
 
     if "ncaaf" == sport:
-        import ncaaf
+        from dags import ncaaf
 
         dag = ncaaf.graph
 

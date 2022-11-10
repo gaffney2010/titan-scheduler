@@ -10,17 +10,17 @@ import titanpublic
 @contextlib.contextmanager
 def titan():
     host = titanpublic.shared_logic.get_secrets(
-        os.path.dirname(os.path.abspath(__file__))
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
     )["aws_host"]
     port = 3306
     dbname = titanpublic.pod_helpers.database_resolver(
         os.environ.get("SPORT"), os.environ.get("TITAN_ENV", "dev")
     )
     user = titanpublic.shared_logic.get_secrets(
-        os.path.dirname(os.path.abspath(__file__))
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
     )["aws_username"]
     password = titanpublic.shared_logic.get_secrets(
-        os.path.dirname(os.path.abspath(__file__))
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
     )["aws_password"]
 
     connection = MySQLdb.connect(

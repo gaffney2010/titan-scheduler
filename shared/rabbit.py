@@ -13,22 +13,27 @@ PREFETCH_COUNT = 100  # Minibatch size
 ROLLOVER_WAIT_SEC = 3  # How long to wait before restarting on a Rabbit timeout
 BIGGER_WAIT_SEC = 240  # How long to wait if the Rabbit node is down.
 
+RETRIES = 1 if "dev" == os.environ.get("TITAN_ENV", "dev") else None
+
 
 class RabbitChannel(object):
     def __init__(self):
         self.sport = os.environ.get("SPORT")
         self.env = os.environ.get("TITAN_ENV", "dev")
-        self.build_channel()
 
         self.all_queues: Set[str] = set()
         self.built_queues: Set[str] = set()
+        self.all_exchanges: Set[str] = set()
+        self.built_exchanges: Set[str] = set()
+        self.build_channel()
+
         self.queue_declare("titan-receiver")
         self.queue_declare("titan-log")
 
-        self.all_exchanges: Set[str] = set()
-        self.built_exchanges: Set[str] = set()
-
-    @retrying.retry(wait_fixed=BIGGER_WAIT_SEC * 1000)
+    @retrying.retry(
+        wait_fixed=BIGGER_WAIT_SEC * 1000,
+        stop_max_attempt_number=RETRIES,
+    )
     def build_channel(self) -> None:
         """This sets self.channel"""
         logging.error("Starting pika connection")
@@ -38,13 +43,13 @@ class RabbitChannel(object):
         ssl_context.set_ciphers("ECDHE+AESGCM:!ECDSA")
 
         rabbitmq_user = titanpublic.shared_logic.get_secrets(
-            os.path.dirname(os.path.abspath(__file__))
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
         )["rabbitmq_user"]
         rabbitmq_password = titanpublic.shared_logic.get_secrets(
-            os.path.dirname(os.path.abspath(__file__))
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
         )["rabbitmq_password"]
         rabbitmq_broker_id = titanpublic.shared_logic.get_secrets(
-            os.path.dirname(os.path.abspath(__file__))
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
         )["rabbitmq_broker_id"]
 
         url = (

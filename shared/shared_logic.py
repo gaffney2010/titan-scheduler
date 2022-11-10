@@ -42,7 +42,7 @@ def _dependent_hashes_from_date_range(sport: str, st: Date, en: Date) -> List[Ga
     dti = st
     while dti < en:
         # game_hash_lookup will be defined by the time this is called.
-        all_hashes += lookups.game_hash_lookup(sport).get(dti, [])
+        all_hashes += lookups.game_hash_lookup().get(dti, [])
         dt += datetime.timedelta(days=1)
         dti = _date_int(dt)
     return all_hashes
