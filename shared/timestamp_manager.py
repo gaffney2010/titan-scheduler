@@ -6,6 +6,7 @@ from titan_server import node_type
 
 class InputTimestampManager(object):
     def __init__(self, nodes: List[List[MatNodeName]]):
+        self.anonymous = False
         self.ts = list()
         self.class_lookup: Dict[MatNodeName, int] = dict()
         # Maintaining order matters here
@@ -15,6 +16,7 @@ class InputTimestampManager(object):
                 self.class_lookup[node_name] = i
 
     def advance_ts(self, node: node_type.AbstractBaseNode) -> None:
+        assert not self.anonymous
         self.ts[self.class_lookup[node.name]] = max(
             self.ts[self.class_lookup[node.name]], node.output_ts
         )
@@ -24,6 +26,14 @@ class InputTimestampManager(object):
 
     def print(self) -> str:
         return ",".join([str(ts) for ts in self.ts])
+
+
+def ts_manager_factory(tss: List[Timestamp]) -> InputTimestampManager:
+    """Creates anonymous classes"""
+    result = InputTimestampManager([])
+    result.ts = tss
+    result.anonymous = True
+    return result
 
 
 class EmptyInputTimestampManager(InputTimestampManager):

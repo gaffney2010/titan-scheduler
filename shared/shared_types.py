@@ -89,3 +89,5 @@ class Node(object):
     suffix_generator: Optional[Callable[[Team, Team, Date], str]] = attr.ib(
         default=None
     )
+    # The name of the image that should be launched to run this model
+    docker_image: Optional[str] = attr.ib(default=None)

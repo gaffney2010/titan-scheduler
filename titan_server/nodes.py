@@ -1,12 +1,10 @@
-import logging
 import os
 from typing import Iterator, List, Optional, Sequence, Tuple
 
 import shared.log_manager as log_manager
 import shared.rabbit as rabbit
-from shared import lookups, shared_logic
+from shared import shared_logic, timestamp_manager
 from shared.shared_types import (
-    GameDetail,
     GameHash,
     MatNodeName,
     Node,
@@ -14,7 +12,7 @@ from shared.shared_types import (
     State,
     Timestamp,
 )
-from titan_server import expirations, node_type, timestamp_manager
+from titan_server import expirations, node_type
 
 # TODO: Make a np.int16 as a space optimization
 # Where in the list of incoming nodes
@@ -247,33 +245,10 @@ class MaterializedNode(AbstractNode):
         self.type = node_type.NodeType.CONCRETE
         super().__init__(name)
 
-    def _game_details(self) -> GameDetail:
-        # Don't store on node for memory purposes.  :)
-        return lookups.game_detail_lookup()[self.game_hash]
-
     def send_rabbit_msg(self) -> None:
-        msg = " ".join(
-            [
-                os.environ["SPORT"],
-                self.feature_node.name,
-                self.expected_input_ts.print(),
-                self._game_details().print(),
-            ]
+        rabbit.compose_rabbit_msg(
+            self.feature_node, self.game_hash, self.expected_input_ts
         )
-        suffix = ""
-        if self.feature_node.suffix_generator is not None:
-            suffix = self.feature_node.suffix_generator(
-                self._game_details().away,
-                self._game_details().home,
-                self._game_details().date,
-            )
-
-        assert self.feature_node.queue_id is not None
-        rabbit.get_rabbit_channel().basic_publish(
-            msg, self.feature_node.queue_id, self.feature_node.queue_id, suffix
-        )
-
-        logging.info(f"Rabbit queue :: {self.feature_node.queue_id} : {msg}")
         self.expiration = expirations.add_expiration(self)
 
     def log(self, state: State) -> None:

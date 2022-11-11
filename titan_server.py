@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 import shared.log_manager as log_manager
 import shared.rabbit as rabbit
-from shared import shared_logic
+from shared import shared_logic, timestamp_manager
 from shared.shared_types import (
     Feature,
     GameHash,
@@ -36,7 +36,7 @@ from shared.shared_types import (
     state_str,
 )
 from shared import lookups, sql_connection
-from titan_server import nodes, node_type, timestamp_manager
+from titan_server import nodes, node_type
 
 
 def heartbeat(materialized_nodes) -> None:

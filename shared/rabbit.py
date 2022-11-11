@@ -9,6 +9,9 @@ import pika
 import retrying
 import titanpublic
 
+from shared import lookups, timestamp_manager
+from shared.shared_types import GameHash, Node
+
 PREFETCH_COUNT = 100  # Minibatch size
 ROLLOVER_WAIT_SEC = 3  # How long to wait before restarting on a Rabbit timeout
 BIGGER_WAIT_SEC = 240  # How long to wait if the Rabbit node is down.
@@ -156,8 +159,8 @@ class RabbitChannel(object):
             self.build_channel()
             self._basic_publish(msg, exchange_id, queue_id, suffix)
 
-    def _consume_to_death(self, callback: Callable) -> None:
-        while True:
+    def _consume_while_condition(self, callback: Callable, condition: Callable) -> None:
+        while condition():
             self._channel.basic_qos(prefetch_count=PREFETCH_COUNT)
             self._channel.basic_consume(
                 queue=titanpublic.pod_helpers.routing_key_resolver(
@@ -167,6 +170,21 @@ class RabbitChannel(object):
                 auto_ack=True,
             )
             self._channel.start_consuming()
+
+    def consume_while_condition(self, callback: Callable, condition: Callable) -> None:
+        if "prod" != self.env:
+            # Don't restart on failure, this runs until error
+            self._consume_while_condition(callback, condition)
+            return
+
+        try:
+            self._consume_while_condition(callback, condition)
+        except pika.AMQPError:
+            time.sleep(ROLLOVER_WAIT_SEC)
+            self.build_channel()
+
+    def _consume_to_death(self, callback: Callable) -> None:
+        self._consume_while_condition(callback, lambda: True)
 
     def consume_to_death(self, callback: Callable) -> None:
         if "prod" != self.env:
@@ -186,3 +204,34 @@ class RabbitChannel(object):
 def get_rabbit_channel() -> RabbitChannel:
     """Creates a singleton"""
     return RabbitChannel()
+
+
+def compose_rabbit_msg(
+    feature_node: Node,
+    game_hash: GameHash,
+    expected_input_ts: timestamp_manager.InputTimestampManager,
+) -> None:
+    game_details = lookups.game_detail_lookup()[game_hash]
+
+    msg = " ".join(
+        [
+            os.environ["SPORT"],
+            feature_node.name,
+            expected_input_ts.print(),
+            game_details.print(),
+        ]
+    )
+    suffix = ""
+    if feature_node.suffix_generator is not None:
+        suffix = feature_node.suffix_generator(
+            game_details.away,
+            game_details.home,
+            game_details.date,
+        )
+
+    assert feature_node.queue_id is not None
+    get_rabbit_channel().basic_publish(
+        msg, feature_node.queue_id, feature_node.queue_id, suffix
+    )
+
+    logging.debug(f"Rabbit queue :: {feature_node.queue_id} : {msg}")

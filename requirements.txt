@@ -1,5 +1,6 @@
 attrs
 black==22.10.0
+docker
 flake8
 frozendict
 mypy
