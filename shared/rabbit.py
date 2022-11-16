@@ -160,16 +160,24 @@ class RabbitChannel(object):
             self._basic_publish(msg, exchange_id, queue_id, suffix)
 
     def _consume_while_condition(self, callback: Callable, condition: Callable) -> None:
-        while condition():
-            self._channel.basic_qos(prefetch_count=PREFETCH_COUNT)
-            self._channel.basic_consume(
-                queue=titanpublic.pod_helpers.routing_key_resolver(
-                    "titan-receiver", self.sport, self.env
-                ),
-                on_message_callback=callback,
-                auto_ack=True,
-            )
-            self._channel.start_consuming()
+        if not condition():
+            return
+        self._channel.basic_qos(prefetch_count=PREFETCH_COUNT)
+        for method, properties, body in self._channel.consume(
+            queue=titanpublic.pod_helpers.routing_key_resolver(
+                "titan-receiver", self.sport, self.env
+            ),
+            auto_ack=True,
+            inactivity_timeout=3,
+        ):
+            if method is None and properties is None and body is None:
+                # This is the timeout condition
+                logging.debug("Pika timeout")
+                return
+            if condition():
+                callback(None, method, properties, body)
+            else:
+                return
 
     def consume_while_condition(self, callback: Callable, condition: Callable) -> None:
         if "prod" != self.env:
@@ -234,4 +242,4 @@ def compose_rabbit_msg(
         msg, feature_node.queue_id, feature_node.queue_id, suffix
     )
 
-    logging.debug(f"Rabbit queue :: {feature_node.queue_id} : {msg}")
+    logging.info(f"Rabbit queue :: {feature_node.queue_id} : {msg}")

@@ -20,7 +20,8 @@ def myhash(s: str) -> int:
 
 
 def graph_sort(graph: List[Node]) -> List[Node]:
-    # TODO: Topological sort, assume today already ordered.
+    # TODO: Topological sort, assume today already ordered.  Keep docker_images
+    #  together as much as possible.
     return graph
 
 

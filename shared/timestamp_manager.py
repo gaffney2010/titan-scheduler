@@ -28,6 +28,18 @@ class InputTimestampManager(object):
         return ",".join([str(ts) for ts in self.ts])
 
 
+class SimpleTimesampWrapper(InputTimestampManager):
+    """A class for when I need a InputTimestampManager, but I have a Timestamp."""
+
+    def __init__(self, ts: Timestamp):
+        super().__init__([])
+        self.simple_ts = str(ts)
+        self.anonymous = True  # Disable updating
+
+    def print(self) -> str:
+        return self.simple_ts
+
+
 def ts_manager_factory(tss: List[Timestamp]) -> InputTimestampManager:
     """Creates anonymous classes"""
     result = InputTimestampManager([])
