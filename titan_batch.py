@@ -2,7 +2,7 @@ import logging
 import os
 
 logging_level = (
-    logging.INFO if "prod" == os.environ.get("TITAN_ENV", "dev") else logging.ERROR
+    logging.INFO if "dev" == os.environ.get("TITAN_ENV", "dev") else logging.ERROR
 )
 
 logging.basicConfig(
@@ -10,7 +10,7 @@ logging.basicConfig(
         "%(asctime)s "
         " %(levelname)s:\t%(module)s::%(funcName)s:%(lineno)d\t-\t%(message)s"
     ),
-    level=logging_level,
+    level=logging.INFO, # logging_level,
 )
 
 #########################
@@ -40,7 +40,7 @@ class DockerContainer(object):
         self.model_container = client.containers.run(
             docker_image,
             environment={
-                "TITAN_ENV": "dev",
+                "TITAN_ENV": "prod",
                 "SPORT": "ncaam",
             },
             detach=True,
@@ -49,6 +49,7 @@ class DockerContainer(object):
     def __enter__(self) -> DContainer:
         return self.model_container
 
+    # TODO: Delete image somehow
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.model_container.stop()
 
@@ -66,9 +67,9 @@ def get_expected_input_ts(
             lookups.game_detail_lookup(),
         )
         for f in dependent_features:
-            node = node_by_name[f]
+            f_node = node_by_name[f]
             for gh in dependent_hashes:
-                if dependent_node_ts := lookups.timestamp_lookup(node).get(gh, None):
+                if dependent_node_ts := lookups.timestamp_lookup(f_node).get(gh, None):
                     max_ts = max(max_ts, dependent_node_ts[1])
         tss.append(max_ts)
     return timestamp_manager.ts_manager_factory(tss)
@@ -90,9 +91,18 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
             rabbit.compose_rabbit_msg(node, game_hash, expected_input_ts)
 
     def mark_success(ch, method, properties, body):
+        if "heartbeat" == body:
+            # These are floating around because of previous server runs.
+            return
+
+        logging.debug("New success")
+        if len(body.split()) != 9:
+            logging.error("Length error, should never happen")
+            logging.error(body)
+
         (
             _,
-            _,
+            model,
             input_timestamp,
             away,
             home,
@@ -101,9 +111,14 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
             _,
             status,
         ) = body.decode().split()
+
+        if model != node.name:
+            logging.debug(f"Skipping model {model}, expected {node.name}")
+            return
+
         this_game_hash = titanpublic.hash.game_hash(away, home, date)
         if "success" == status:
-            print(str(len(queued_games)) + " remaining")
+            print(str(len(queued_games)) + " " + node.name + " remaining")
             if this_game_hash in queued_games:
                 # Tolerate resends
                 queued_games.remove(this_game_hash)
@@ -120,7 +135,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
             raise Exception(f"Got bad stuff: {body}")
 
     def still_waiting() -> bool:
-        print(str(len(queued_games)) + " remaining (C)")
+        print(str(len(queued_games)) + " " + node.name + " remaining (C)")
         return len(queued_games) > 0
 
     # Wait here until we've gotten success messages for each game.
@@ -129,6 +144,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
 
 if __name__ == "__main__":
     sport = os.environ.get("SPORT")
+    logging.info(f"Running for sport = {sport}")
     if "ncaam" == sport:
         from dags import ncaam
 

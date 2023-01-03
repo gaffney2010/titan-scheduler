@@ -168,7 +168,7 @@ class RabbitChannel(object):
                 "titan-receiver", self.sport, self.env
             ),
             auto_ack=True,
-            inactivity_timeout=3,
+            inactivity_timeout=300,
         ):
             if method is None and properties is None and body is None:
                 # This is the timeout condition
@@ -187,9 +187,11 @@ class RabbitChannel(object):
 
         try:
             self._consume_while_condition(callback, condition)
-        except pika.AMQPError:
+        except pika.exceptions.AMQPError:
+            logging.error("Pika exception")
             time.sleep(ROLLOVER_WAIT_SEC)
             self.build_channel()
+            self.consume_while_condition(callback, condition)
 
     def _consume_to_death(self, callback: Callable) -> None:
         self._consume_while_condition(callback, lambda: True)
