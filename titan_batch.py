@@ -10,7 +10,7 @@ logging.basicConfig(
         "%(asctime)s "
         " %(levelname)s:\t%(module)s::%(funcName)s:%(lineno)d\t-\t%(message)s"
     ),
-    level=logging.INFO, # logging_level,
+    level=logging.INFO,  # logging_level,
 )
 
 #########################
@@ -21,8 +21,9 @@ from typing import Any, Dict, Set
 import docker
 import retrying
 import titanpublic
+from tqdm import tqdm
 
-from shared import lookups, rabbit, timestamp_manager
+from shared import lookups, timestamp_manager, queuer
 from shared.shared_types import GameHash, Node, NodeName
 
 
@@ -40,8 +41,8 @@ class DockerContainer(object):
         self.model_container = client.containers.run(
             docker_image,
             environment={
-                "TITAN_ENV": "prod",
-                "SPORT": "ncaam",
+                "TITAN_ENV": os.environ.get("TITAN_ENV", "dev"),
+                "SPORT": os.environ.get("SPORT", "ncaam"),
             },
             detach=True,
         )
@@ -80,7 +81,7 @@ def get_expected_input_ts(
     stop_max_attempt_number=NUM_RETRIES,
 )
 def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
-    logging.info(f"Starting feature {node.name}")
+    logging.info(f"Starting feature {node.name}...")
 
     queued_games: Set[GameHash] = set()
     for game_hash in lookups.game_detail_lookup().keys():
@@ -88,14 +89,19 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
         actual_input_ts = lookups.timestamp_lookup(node).get(game_hash, (0, 0))[0]
         if actual_input_ts < expected_input_ts.max_ts():
             queued_games.add(game_hash)
-            rabbit.compose_rabbit_msg(node, game_hash, expected_input_ts)
+            queuer.compose_queued_msg(
+                titanpublic.queuer.get_redis_channel(), game_hash, expected_input_ts
+            )
+
+    logging.info(f"Queued up {len(queue_games)} games...")
+    t = tqdm(total=len(queued_games))
 
     def mark_success(ch, method, properties, body):
         if "heartbeat" == body:
             # These are floating around because of previous server runs.
             return
 
-        logging.debug("New success")
+        # logging.debug("New success")
         if len(body.split()) != 9:
             logging.error("Length error, should never happen")
             logging.error(body)
@@ -118,14 +124,16 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
 
         this_game_hash = titanpublic.hash.game_hash(away, home, date)
         if "success" == status:
-            print(str(len(queued_games)) + " " + node.name + " remaining")
+            # print(str(len(queued_games)) + " " + node.name + " remaining")
             if this_game_hash in queued_games:
                 # Tolerate resends
                 queued_games.remove(this_game_hash)
+                tqdm.update(1)
         elif "failure" == status:
             # Requeue
             print(f"Retrying failed model: {body}")
-            rabbit.compose_rabbit_msg(
+            queuer.compose_queued_msg(
+                titanpublic.queuer.RedisChannel(),
                 node,
                 this_game_hash,
                 timestamp_manager.SimpleTimesampWrapper(input_timestamp),
@@ -139,7 +147,11 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
         return len(queued_games) > 0
 
     # Wait here until we've gotten success messages for each game.
-    rabbit.get_rabbit_channel().consume_while_condition(mark_success, still_waiting)
+    titanpublic.queuer.get_redis_channel().consume_while_condition(
+        mark_success, still_waiting
+    )
+
+    t.close()
 
 
 if __name__ == "__main__":

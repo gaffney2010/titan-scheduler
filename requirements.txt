@@ -10,5 +10,5 @@ pika
 pyyaml
 retrying
 tabulate
-titanpublic @ git+https://github.com/gaffney2010/titan-public.git#egg=titanpublic-1.18.2
+titanpublic @ git+https://github.com/gaffney2010/titan-public.git#egg=titanpublic-1.19.0
 tqdm
