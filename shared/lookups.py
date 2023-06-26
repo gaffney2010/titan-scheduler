@@ -2,7 +2,7 @@ import collections
 import functools
 from typing import Dict, Tuple
 
-from shared import rabbit, sql_connection
+from shared import queuer, sql_connection
 from shared.shared_types import (
     GameDetail,
     GameDetailLookup,
@@ -97,8 +97,8 @@ def timestamp_lookup(node: Node) -> Dict[GameHash, Tuple[Timestamp, Timestamp]]:
     """This has a nicer API, but it isn't hashable."""
     # Hijack for some setup, if not done
     if node.queue_id is not None:
-        rabbit.get_rabbit_channel().queue_declare(node.queue_id)
+        queuer.get_redis_channel().queue_declare(node.queue_id)
         if node.suffix_generator is not None:
-            rabbit.get_rabbit_channel().exchange_declare(node.queue_id)
+            queuer.get_redis_channel().exchange_declare(node.queue_id)
 
     return timestamp_lookup_cache(node.name, node.type)

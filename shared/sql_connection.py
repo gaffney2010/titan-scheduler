@@ -3,7 +3,7 @@
 import contextlib
 import os
 
-import MySQLdb
+import mysql
 import titanpublic
 
 
@@ -23,8 +23,11 @@ def titan():
         os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
     )["aws_password"]
 
-    connection = MySQLdb.connect(
-        host=host, port=port, user=user, passwd=password, db=dbname
+    connection = mysql.connector.connect(
+        user="tjg",
+        password="DuckPage418",
+        host="localhost",
+        database=dbname,
     )
 
     try:

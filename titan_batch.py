@@ -44,6 +44,15 @@ class DockerContainer(object):
                 "TITAN_ENV": os.environ.get("TITAN_ENV", "dev"),
                 "SPORT": os.environ.get("SPORT", "ncaam"),
             },
+            volumes={
+                "/var/lib/redis": {
+                    "bind": "/data",
+                    "mode": "rw",
+                }
+            },
+            ports={
+                "3306/tcp": 3306,
+            },
             detach=True,
         )
 
@@ -178,7 +187,7 @@ if __name__ == "__main__":
     #  possible.
     st, en = 0, 0
     while st < len(dag):
-        while dag[en].docker_image == dag[st].docker_image:
+        while en < len(dag) and dag[en].docker_image == dag[st].docker_image:
             en += 1
 
         this_image = dag[st].docker_image

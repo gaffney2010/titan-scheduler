@@ -8,7 +8,8 @@ mysqlclient
 pandas
 pika
 pyyaml
+redis
 retrying
 tabulate
-titanpublic @ git+https://github.com/gaffney2010/titan-public.git#egg=titanpublic-1.19.0
+titanpublic @ git+https://github.com/gaffney2010/titan-public.git#egg=titanpublic-1.19.2
 tqdm
