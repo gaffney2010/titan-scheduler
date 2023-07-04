@@ -2,7 +2,7 @@ import logging
 import os
 
 logging_level = (
-    logging.INFO if "dev" == os.environ.get("TITAN_ENV", "dev") else logging.ERROR
+    logging.DEBUG if "dev" == os.environ.get("TITAN_ENV", "dev") else logging.INFO
 )
 
 logging.basicConfig(
@@ -10,7 +10,7 @@ logging.basicConfig(
         "%(asctime)s "
         " %(levelname)s:\t%(module)s::%(funcName)s:%(lineno)d\t-\t%(message)s"
     ),
-    level=logging.INFO,  # logging_level,
+    level=logging_level,
 )
 
 #########################
@@ -155,9 +155,11 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
         print(str(len(queued_games)) + " " + node.name + " remaining (C)")
         return len(queued_games) > 0
 
+    titanpublic.queuer.get_redis_channel().queue_declare(node.name)
+
     # Wait here until we've gotten success messages for each game.
     titanpublic.queuer.get_redis_channel().consume_while_condition(
-        mark_success, still_waiting
+        "titan-receiver", mark_success, still_waiting
     )
 
     t.close()
@@ -182,6 +184,9 @@ if __name__ == "__main__":
     #     dag = ncaaf.graph
 
     node_by_name = {node.name: node for node in dag}
+
+    # Build a single queue for everything
+    titanpublic.queuer.get_redis_channel().queue_declare("titan-receiver")
 
     # Run all the features in order, grouping together consecutive docker_image where
     #  possible.
