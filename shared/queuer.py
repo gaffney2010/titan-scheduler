@@ -33,7 +33,7 @@ def compose_queued_msg(
 
     assert feature_node.queue_id is not None
     queue_channel.basic_publish(
-        msg, feature_node.queue_id, feature_node.queue_id, suffix
+        msg, feature_node.queue_id, suffix
     )
 
     logging.info(f"Rabbit queue :: {feature_node.queue_id} : {msg}")

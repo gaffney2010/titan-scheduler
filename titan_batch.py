@@ -28,7 +28,7 @@ from shared.shared_types import GameHash, Node, NodeName
 
 
 WAIT_FIXED_SECS = 3
-NUM_RETRIES = 5
+NUM_RETRIES = 1
 
 DContainer = Any  # docker-py doesn't expose Container type
 
@@ -49,9 +49,6 @@ class DockerContainer(object):
                     "bind": "/data",
                     "mode": "rw",
                 }
-            },
-            ports={
-                "3306/tcp": 3306,
             },
             detach=True,
         )
@@ -99,10 +96,13 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
         if actual_input_ts < expected_input_ts.max_ts():
             queued_games.add(game_hash)
             queuer.compose_queued_msg(
-                titanpublic.queuer.get_redis_channel(), game_hash, expected_input_ts
+                titanpublic.queuer.get_redis_channel(),
+                node,
+                game_hash,
+                expected_input_ts,
             )
 
-    logging.info(f"Queued up {len(queue_games)} games...")
+    logging.info(f"Queued up {len(queued_games)} games...")
     t = tqdm(total=len(queued_games))
 
     def mark_success(ch, method, properties, body):

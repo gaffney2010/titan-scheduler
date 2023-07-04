@@ -3,7 +3,7 @@
 import contextlib
 import os
 
-import mysql
+import mysql.connector
 import titanpublic
 
 
@@ -24,9 +24,9 @@ def titan():
     )["aws_password"]
 
     connection = mysql.connector.connect(
-        user="tjg",
-        password="DuckPage418",
-        host="localhost",
+        user=user,
+        password=password,
+        host=host,
         database=dbname,
     )
 

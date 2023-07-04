@@ -2,6 +2,8 @@ import collections
 import functools
 from typing import Dict, Tuple
 
+import titanpublic
+
 from shared import queuer, sql_connection
 from shared.shared_types import (
     GameDetail,
@@ -97,7 +99,7 @@ def timestamp_lookup(node: Node) -> Dict[GameHash, Tuple[Timestamp, Timestamp]]:
     """This has a nicer API, but it isn't hashable."""
     # Hijack for some setup, if not done
     if node.queue_id is not None:
-        queuer.get_redis_channel().queue_declare(node.queue_id)
+        titanpublic.queuer.get_redis_channel().queue_declare(node.queue_id)
         if node.suffix_generator is not None:
             queuer.get_redis_channel().exchange_declare(node.queue_id)
 
