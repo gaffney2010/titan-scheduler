@@ -44,12 +44,7 @@ class DockerContainer(object):
                 "TITAN_ENV": os.environ.get("TITAN_ENV", "dev"),
                 "SPORT": os.environ.get("SPORT", "ncaam"),
             },
-            volumes={
-                "/var/lib/redis": {
-                    "bind": "/data",
-                    "mode": "rw",
-                }
-            },
+            network="redis-rainbow",
             detach=True,
         )
 
