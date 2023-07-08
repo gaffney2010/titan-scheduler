@@ -33,27 +33,45 @@ NUM_RETRIES = 1
 DContainer = Any  # docker-py doesn't expose Container type
 
 
+def get_ipaddr() -> int:
+    return os.system("ifconfig | sed -n 's/.*\(192\.[0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p'")
+
+
 class DockerContainer(object):
-    def __init__(self, docker_image: str):
-        logging.error(docker_image)
+    def __init__(self, docker_image: str, lazy: bool = False):
+        self.started = False
+        self.docker_image = docker_image
+        if not lazy:
+            self.start_container()
+
+    def start_container(self):
+        if self.started:
+            return
+
+        logging.error(self.docker_image)
         client = docker.from_env()
         # TODO: Pass this in
         self.model_container = client.containers.run(
-            docker_image,
+            self.docker_image,
             environment={
                 "TITAN_ENV": os.environ.get("TITAN_ENV", "dev"),
                 "SPORT": os.environ.get("SPORT", "ncaam"),
+                "PARENT_IP": get_ipaddr(),
             },
-            network="redis-rainbow",
+            # This uses local ports, along with passing IP, I think...
+            network="host",
             detach=True,
         )
+        self.started = True
 
     def __enter__(self) -> DContainer:
-        return self.model_container
+        return self
 
     # TODO: Delete image somehow
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.model_container.stop()
+        if self.started:
+            self.model_container.stop()
+            self.model_container.remove()
 
 
 # Return timestamp object
@@ -81,7 +99,7 @@ def get_expected_input_ts(
     wait_fixed=WAIT_FIXED_SECS * 1000,
     stop_max_attempt_number=NUM_RETRIES,
 )
-def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
+def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: DockerContainer) -> None:
     logging.info(f"Starting feature {node.name}...")
 
     queued_games: Set[GameHash] = set()
@@ -132,7 +150,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
             if this_game_hash in queued_games:
                 # Tolerate resends
                 queued_games.remove(this_game_hash)
-                tqdm.update(1)
+                t.update(1)
         elif "failure" == status:
             # Requeue
             print(f"Retrying failed model: {body}")
@@ -147,9 +165,13 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node]) -> None:
             raise Exception(f"Got bad stuff: {body}")
 
     def still_waiting() -> bool:
-        print(str(len(queued_games)) + " " + node.name + " remaining (C)")
+        # print(str(len(queued_games)) + " " + node.name + " remaining (C)")
         return len(queued_games) > 0
 
+    if not still_waiting():
+        return
+
+    container.start_container()
     titanpublic.queuer.get_redis_channel().queue_declare(node.name)
 
     # Wait here until we've gotten success messages for each game.
@@ -192,9 +214,9 @@ if __name__ == "__main__":
 
         this_image = dag[st].docker_image
         if this_image is not None:
-            with DockerContainer(this_image):
+            with DockerContainer(this_image, lazy=True) as container:
                 for i in range(st, en):
                     logging.error(f"Running {dag[i].name}")
-                    run_feature(dag[i], node_by_name)
+                    run_feature(dag[i], node_by_name, container)
 
         st = en
