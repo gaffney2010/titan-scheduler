@@ -1,17 +1,11 @@
+from earthlings.titan_logging import titan_logger
 import logging
 import os
 
-logging_level = (
+level = (
     logging.DEBUG if "dev" == os.environ.get("TITAN_ENV", "dev") else logging.INFO
 )
-
-logging.basicConfig(
-    format=(
-        "%(asctime)s "
-        " %(levelname)s:\t%(module)s::%(funcName)s:%(lineno)d\t-\t%(message)s"
-    ),
-    level=logging_level,
-)
+tlogger = titan_logger("batch_scheduler", False, file_level=level, console_level=level)
 
 #########################
 # Everything above this line must be set before other imports, because logging is dumb.
@@ -48,7 +42,7 @@ class DockerContainer(object):
         if self.started:
             return
 
-        logging.error(self.docker_image)
+        tlogger.console_logger.error(self.docker_image)
         client = docker.from_env()
         # TODO: Pass this in
         self.model_container = client.containers.run(
@@ -60,6 +54,12 @@ class DockerContainer(object):
             },
             # This uses local ports, along with passing IP, I think...
             network="host",
+            volumes={
+                "/home/tjg/logs": {
+                    "bind": "/logs",
+                    "mode": "rw",
+                }
+            },
             detach=True,
         )
         self.started = True
@@ -100,7 +100,7 @@ def get_expected_input_ts(
     stop_max_attempt_number=NUM_RETRIES,
 )
 def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: DockerContainer) -> None:
-    logging.info(f"Starting feature {node.name}...")
+    tlogger.console_logger.info(f"Starting feature {node.name}...")
 
     queued_games: Set[GameHash] = set()
     for game_hash in lookups.game_detail_lookup().keys():
@@ -115,7 +115,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: Docke
                 expected_input_ts,
             )
 
-    logging.info(f"Queued up {len(queued_games)} games...")
+    tlogger.console_logger.info(f"Queued up {len(queued_games)} games...")
     t = tqdm(total=len(queued_games))
 
     def mark_success(ch, method, properties, body):
@@ -123,10 +123,9 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: Docke
             # These are floating around because of previous server runs.
             return
 
-        # logging.debug("New success")
         if len(body.split()) != 9:
-            logging.error("Length error, should never happen")
-            logging.error(body)
+            tlogger.log_both("Length error, should never happen", logging.ERROR)
+            tlogger.log_both(body, logging.ERROR)
 
         (
             _,
@@ -141,7 +140,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: Docke
         ) = body.decode().split()
 
         if model != node.name:
-            logging.debug(f"Skipping model {model}, expected {node.name}")
+            tlogger.file_logger.debug(f"Skipping model {model}, expected {node.name}")
             return
 
         this_game_hash = titanpublic.hash.game_hash(away, home, date)
@@ -184,7 +183,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: Docke
 
 if __name__ == "__main__":
     sport = os.environ.get("SPORT")
-    logging.info(f"Running for sport = {sport}")
+    tlogger.console_logger.info(f"Running for sport = {sport}")
     if "ncaam" == sport:
         from dags import ncaam
 
@@ -216,7 +215,7 @@ if __name__ == "__main__":
         if this_image is not None:
             with DockerContainer(this_image, lazy=True) as container:
                 for i in range(st, en):
-                    logging.error(f"Running {dag[i].name}")
+                    tlogger.console_logger.error(f"Running {dag[i].name}")
                     run_feature(dag[i], node_by_name, container)
 
         st = en
