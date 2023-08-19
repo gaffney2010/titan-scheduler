@@ -11,5 +11,5 @@ pyyaml
 redis
 retrying
 tabulate
-titanpublic @ git+https://github.com/gaffney2010/titan-public.git#egg=titanpublic-1.19.17
+titanpublic @ git+https://github.com/gaffney2010/titan-public.git#egg=titanpublic-1.20.2
 tqdm

@@ -24,6 +24,8 @@ from shared.shared_types import GameHash, Node, NodeName
 WAIT_FIXED_SECS = 3
 NUM_RETRIES = 1
 
+TITAN_RECEIVER = "titan-receiver"
+
 DContainer = Any  # docker-py doesn't expose Container type
 
 
@@ -101,6 +103,12 @@ def get_expected_input_ts(
 )
 def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: DockerContainer) -> None:
     tlogger.console_logger.info(f"Starting feature {node.name}...")
+    channel = titanpublic.queuer.get_redis_channel()
+    channel.queue_declare(node.name)
+
+    # Clear out old messages, this is cleaner
+    channel.queue_clear(TITAN_RECEIVER)
+    channel.queue_clear(node.name)
 
     queued_games: Set[GameHash] = set()
     for game_hash in lookups.game_detail_lookup().keys():
@@ -109,7 +117,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: Docke
         if actual_input_ts < expected_input_ts.max_ts():
             queued_games.add(game_hash)
             queuer.compose_queued_msg(
-                titanpublic.queuer.get_redis_channel(),
+                channel,
                 node,
                 game_hash,
                 expected_input_ts,
@@ -154,7 +162,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: Docke
             # Requeue
             print(f"Retrying failed model: {body}")
             queuer.compose_queued_msg(
-                titanpublic.queuer.RedisChannel(),
+                channel,
                 node,
                 this_game_hash,
                 timestamp_manager.SimpleTimesampWrapper(input_timestamp),
@@ -171,11 +179,10 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: Docke
         return
 
     container.start_container()
-    titanpublic.queuer.get_redis_channel().queue_declare(node.name)
 
     # Wait here until we've gotten success messages for each game.
-    titanpublic.queuer.get_redis_channel().consume_while_condition(
-        "titan-receiver", mark_success, still_waiting
+    channel.consume_while_condition(
+        TITAN_RECEIVER, mark_success, still_waiting
     )
 
     t.close()
@@ -202,7 +209,7 @@ if __name__ == "__main__":
     node_by_name = {node.name: node for node in dag}
 
     # Build a single queue for everything
-    titanpublic.queuer.get_redis_channel().queue_declare("titan-receiver")
+    titanpublic.queuer.get_redis_channel().queue_declare(TITAN_RECEIVER)
 
     # Run all the features in order, grouping together consecutive docker_image where
     #  possible.
