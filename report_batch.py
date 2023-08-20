@@ -1,6 +1,7 @@
+import argparse
+from enum import Enum
+import os
 from typing import Dict, Set, Tuple
-
-import colorama
 
 from shared import lookups, shared_logic
 from shared.shared_types import Date, GameHash, Node, NodeName
@@ -8,6 +9,25 @@ from shared.shared_types import Date, GameHash, Node, NodeName
 
 class ReportBatchException(Exception):
     pass
+
+
+class TjColor(Enum):
+    DEFAULT = 0
+    GREEN = 1
+    YELLOW = 2
+    RED = 3
+
+
+def tj_color(c: TjColor) -> str:
+    if TjColor.DEFAULT == c:
+        return "\033[0m"
+    if TjColor.RED == c:
+        return "\033[31m"
+    if TjColor.YELLOW == c:
+        return "\033[33m"
+    if TjColor.GREEN == c:
+        return "\033[32m"
+    raise ReportBatchException("I don't even, what kinda color...")
 
 
 class Reporter(object):
@@ -39,35 +59,33 @@ class Reporter(object):
         self,
         section: str,
         text: str,
-        color: str = colorama.Fore.RESET,
+        color: TjColor = TjColor.DEFAULT,
         new_line: bool = False,
     ) -> None:
         self._assert_open()
         if section not in self.body:
             self.body[section] = [[]]
             self.order.append(section)
-        self.body[section][-1].append(color + text)
+        self.body[section][-1].append(tj_color(color) + text)
         if new_line:
             self.body[section].append([])
 
 
 if __name__ == "__main__":
-    colorama.init()
-
-    sport = os.environ.get("SPORT")
-    tlogger.console_logger.info(f"Logging for sport = {sport}")
+    sport = os.environ.get("SPORT", "ncaam")
     if "ncaam" == sport:
         from dags import ncaam
 
         dag = ncaam.graph
 
-    def does_needed_refresh(game_hash: GameHash, node: Node) -> bool:
-        nonlocal node_by_name
+    node_by_name = {node.name: node for node in dag}
+
+    def does_needs_refresh(game_hash: GameHash, node: Node, needs_refresh: Dict[Tuple[GameHash, NodeName], bool]) -> bool:
         actual_input_ts = lookups.timestamp_lookup(node).get(game_hash, (0, 0))[0]
-        for _, d_node, gh in shared_logic.timestamp_lookup(
+        for _, d_node, gh in shared_logic.dependencies(
             game_hash, node, node_by_name
         ):
-            if needs_refresh[(d_node.name, gh)]:
+            if needs_refresh[(gh, d_node.name)]:
                 return True
             dependent_node_ts = lookups.timestamp_lookup(d_node).get(gh, None)
             if dependent_node_ts:
@@ -78,12 +96,12 @@ if __name__ == "__main__":
     needs_refresh: Dict[Tuple[GameHash, NodeName], bool] = dict()
     for node in dag:
         for game_hash in lookups.game_detail_lookup().keys():
-            needs_refresh[(game_hash, node.name)] = does_needs_refresh(game_hash, node)
+            needs_refresh[(game_hash, node.name)] = does_needs_refresh(game_hash, node, needs_refresh)
 
-    min_needs = Dict[Tuple[Date, NodeName], bool] = dict()
-    max_needs = Dict[Tuple[Date, NodeName], bool] = dict()
-    all_dates: Set[Date] = list()
-    for k, v in needs_refresh:
+    min_needs: Dict[Tuple[Date, NodeName], bool] = dict()
+    max_needs: Dict[Tuple[Date, NodeName], bool] = dict()
+    all_dates: Set[Date] = set()
+    for k, v in needs_refresh.items():
         gh, nn = k
         d = lookups.game_detail_lookup()[gh].date
         all_dates.add(d)
@@ -95,19 +113,29 @@ if __name__ == "__main__":
         min_needs[new_k] &= v
         max_needs[new_k] |= v
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--path", help="Path to write report to")
+    parser.add_argument("--s", type=int, help="Start date YYYYMMDD")
+    parser.add_argument("--e", type=int, help="End date YYYYMMDD")
+    args = parser.parse_args()
+    report_start_date = args.s
+    report_end_date = args.e
+    report_path = args.path
+
     reporter = Reporter()
     reporter.open(report_path)
+    reporter.write("Header", f"Run from {report_start_date} to {report_end_date}")
     for node in dag:
-        report.write(node.name, node.name, new_line=True)
+        reporter.write(node.name, node.name, new_line=True)
     color_guide = {
-        (False, False): colorama.Fore.RED,
-        (False, True): colorama.Fore.YELLOW,
-        (True, True): colorama.Fore.GREEN,
+        (False, False): TjColor.GREEN,
+        (False, True): TjColor.YELLOW,
+        (True, True): TjColor.RED,
     }
     for date in range(report_start_date, report_end_date):
         if date not in all_dates:
             continue
         for node in dag:
-            a, z = min_needs(date, node.name), max_needs(date, node.name)
+            a, z = min_needs[(date, node.name)], max_needs[(date, node.name)]
             reporter.write(node.name, "\u2588", color=color_guide[(a, z)])
     reporter.close()

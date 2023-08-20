@@ -1,7 +1,7 @@
 import datetime
 import functools
 import os
-from typing import Callable, List, Tuple
+from typing import Callable, Dict, List, Iterator, Tuple
 
 import titanpublic
 
@@ -92,7 +92,7 @@ def same_game(game_hash: GameHash, *_) -> List[GameHash]:
 
 def dependencies(
     game_hash: GameHash, node: Node, node_by_name: Dict[NodeName, Node]
-) -> Iterator[Tuple(int, Node, GameHash)]:
+) -> Iterator[Tuple[int, Node, GameHash]]:
     ind = 0
     for dependent_features, dependent_hash_generator in node.dependencies:
         dependent_hashes = dependent_hash_generator(
@@ -100,9 +100,9 @@ def dependencies(
             lookups.game_hash_lookup(),
             lookups.game_detail_lookup(),
         )
-        for d in dependent_hashes:
+        for d in dependent_features:
             d_node = node_by_name[d]
-            for gh in dependent_hashes:
+            for gh in sorted(dependent_hashes, key=lambda h: lookups.game_detail_lookup()[h].date):
                 yield (ind, d_node, gh)
         # Some arcane code cares about the different dependency families
         ind += 1
