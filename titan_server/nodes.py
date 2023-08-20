@@ -31,9 +31,9 @@ class AbstractNode(node_type.AbstractBaseNode):
             self.incoming: List["AbstractNode"] = list()  # 8B per
         self.blocking: List[bool] = list()  # Should be in same order as incoming
         # self.expected_input_ts needs to be set elsewhere to an InputTimestampManager
-        self._expected_input_ts: Optional[
-            timestamp_manager.InputTimestampManager
-        ] = None  # 2B
+        self._expected_input_ts: Optional[timestamp_manager.InputTimestampManager] = (
+            None  # 2B
+        )
         self.actual_input_ts: Timestamp = 0  # 2B
         self.output_ts: Timestamp = 0  # 2B
         self.last_queued_ts: Optional[Timestamp] = None

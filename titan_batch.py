@@ -2,9 +2,7 @@ from earthlings.titan_logging import titan_logger
 import logging
 import os
 
-level = (
-    logging.DEBUG if "dev" == os.environ.get("TITAN_ENV", "dev") else logging.INFO
-)
+level = logging.DEBUG if "dev" == os.environ.get("TITAN_ENV", "dev") else logging.INFO
 tlogger = titan_logger("batch_scheduler", False, file_level=level, console_level=level)
 
 #########################
@@ -17,7 +15,7 @@ import retrying
 import titanpublic
 from tqdm import tqdm
 
-from shared import lookups, timestamp_manager, queuer
+from shared import lookups, shared_logic, timestamp_manager, queuer
 from shared.shared_types import GameHash, Node, NodeName
 
 
@@ -30,7 +28,9 @@ DContainer = Any  # docker-py doesn't expose Container type
 
 
 def get_ipaddr() -> int:
-    return os.system("ifconfig | sed -n 's/.*\(192\.[0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p'")
+    return os.system(
+        "ifconfig | sed -n 's/.*\(192\.[0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p'"
+    )
 
 
 class DockerContainer(object):
@@ -80,28 +80,22 @@ class DockerContainer(object):
 def get_expected_input_ts(
     game_hash: GameHash, node: Node, node_by_name: Dict[NodeName, Node]
 ) -> timestamp_manager.InputTimestampManager:
-    tss = list()
-    for dependent_features, dependent_hash_generator in node.dependencies:
-        max_ts = 0
-        dependent_hashes = dependent_hash_generator(
-            game_hash,
-            lookups.game_hash_lookup(),
-            lookups.game_detail_lookup(),
-        )
-        for f in dependent_features:
-            f_node = node_by_name[f]
-            for gh in dependent_hashes:
-                if dependent_node_ts := lookups.timestamp_lookup(f_node).get(gh, None):
-                    max_ts = max(max_ts, dependent_node_ts[1])
-        tss.append(max_ts)
-    return timestamp_manager.ts_manager_factory(tss)
+    max_tss = list()
+    for ind, d_node, gh in shared_logic.dependencies(game_hash, node, node_by_name):
+        while ind >= len(max_tss):
+            max_tss.append(0)
+        if dependent_node_ts := lookups.timestamp_lookup(f_node).get(gh, None):
+            max_tss[ind] = max(max_tss[ind], dependent_node_ts[1])
+    return timestamp_manager.ts_manager_factory(max_tss)
 
 
 @retrying.retry(
     wait_fixed=WAIT_FIXED_SECS * 1000,
     stop_max_attempt_number=NUM_RETRIES,
 )
-def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: DockerContainer) -> None:
+def run_feature(
+    node: Node, node_by_name: Dict[NodeName, Node], container: DockerContainer
+) -> None:
     tlogger.console_logger.info(f"Starting feature {node.name}...")
     channel = titanpublic.queuer.get_redis_channel()
     channel.queue_declare(node.name)
@@ -181,9 +175,7 @@ def run_feature(node: Node, node_by_name: Dict[NodeName, Node], container: Docke
     container.start_container()
 
     # Wait here until we've gotten success messages for each game.
-    channel.consume_while_condition(
-        TITAN_RECEIVER, mark_success, still_waiting
-    )
+    channel.consume_while_condition(TITAN_RECEIVER, mark_success, still_waiting)
 
     t.close()
 

@@ -99,10 +99,8 @@ def add_pseudo_dependency(
             materialized_nodes[(dependent_feature, gh)] for gh in dependent_hashes
         ]
         pseudo_nodes[node_key] = nodes.PseudoNode(str(node_key), node_group)
-        pseudo_nodes[
-            node_key
-        ].expected_input_ts = timestamp_manager.InputTimestampManager(
-            [[n.name for n in node_group]]
+        pseudo_nodes[node_key].expected_input_ts = (
+            timestamp_manager.InputTimestampManager([[n.name for n in node_group]])
         )
     this_node.add_backlink(pseudo_nodes[node_key])
     return pseudo_nodes[node_key].name
@@ -170,9 +168,9 @@ def materialize_graph(
         if not node.dependencies:
             # This should really only happen for "games"
             for game_hash in lookups.game_detail_lookup().keys():
-                materialized_nodes[
-                    (node.name, game_hash)
-                ].expected_input_ts = timestamp_manager.EmptyInputTimestampManager()
+                materialized_nodes[(node.name, game_hash)].expected_input_ts = (
+                    timestamp_manager.EmptyInputTimestampManager()
+                )
             continue
 
         for game_hash in tqdm(lookups.game_detail_lookup().keys()):

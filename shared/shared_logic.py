@@ -11,6 +11,7 @@ from shared.shared_types import (
     GameDetailLookup,
     GameHashLookup,
     GameHash,
+    NodeName,
     Node,
 )
 
@@ -87,3 +88,21 @@ def dependent_hashes_from_date_map_multi_range(
 
 def same_game(game_hash: GameHash, *_) -> List[GameHash]:
     return [game_hash]
+
+
+def dependencies(
+    game_hash: GameHash, node: Node, node_by_name: Dict[NodeName, Node]
+) -> Iterator[Tuple(int, Node, GameHash)]:
+    ind = 0
+    for dependent_features, dependent_hash_generator in node.dependencies:
+        dependent_hashes = dependent_hash_generator(
+            game_hash,
+            lookups.game_hash_lookup(),
+            lookups.game_detail_lookup(),
+        )
+        for d in dependent_hashes:
+            d_node = node_by_name[d]
+            for gh in dependent_hashes:
+                yield (ind, d_node, gh)
+        # Some arcane code cares about the different dependency families
+        ind += 1

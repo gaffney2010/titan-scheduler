@@ -20,11 +20,9 @@ def game_hash_lookup() -> GameHashLookup:
     result = collections.defaultdict(list)
     with sql_connection.titan() as con:
         cur = con.cursor()
-        cur.execute(
-            """
+        cur.execute("""
             SELECT game_hash, date FROM games;
-        """
-        )
+        """)
         for row in cur.fetchall():
             game_hash, date = row
             result[date].append(game_hash)
@@ -36,11 +34,9 @@ def game_detail_lookup() -> GameDetailLookup:
     result = dict()
     with sql_connection.titan() as con:
         cur = con.cursor()
-        cur.execute(
-            """
+        cur.execute("""
             SELECT game_hash, away, home, date, neutral FROM games;
-        """
-        )
+        """)
         for row in cur.fetchall():
             game_hash, away, home, date, neutral = row
             result[game_hash] = GameDetail(
@@ -61,8 +57,7 @@ def timestamp_lookup_cache(
         if "games" != node_name:
             # See if table needs creating
             cur = con.cursor()
-            cur.execute(
-                f"""
+            cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS {node_name} (
                     game_hash BIGINT,
                     value {node_type},
@@ -71,8 +66,7 @@ def timestamp_lookup_cache(
                     output_timestamp BIGINT,
                     PRIMARY KEY (game_hash)
                 );
-            """
-            )
+            """)
             con.commit()
 
         cur = con.cursor()
@@ -84,11 +78,9 @@ def timestamp_lookup_cache(
             if "games" == node_name
             else "output_timestamp"
         )
-        cur.execute(
-            f"""
+        cur.execute(f"""
             SELECT game_hash, {input_ts_clause}, {output_ts_clause} FROM {node_name};
-        """
-        )
+        """)
         for row in cur.fetchall():
             game_hash, input_ts, output_ts = row
             result[game_hash] = (input_ts, output_ts)
