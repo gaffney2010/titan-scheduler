@@ -93,10 +93,13 @@ if __name__ == "__main__":
                     return True
         return False
 
+    print("Main work loop...")
     needs_refresh: Dict[Tuple[GameHash, NodeName], bool] = dict()
     for node in dag:
+        print(f"   Node: {node.name}")
         for game_hash in lookups.game_detail_lookup().keys():
             needs_refresh[(game_hash, node.name)] = does_needs_refresh(game_hash, node, needs_refresh)
+    print("Main work loop complete.")
 
     min_needs: Dict[Tuple[Date, NodeName], bool] = dict()
     max_needs: Dict[Tuple[Date, NodeName], bool] = dict()
@@ -112,6 +115,8 @@ if __name__ == "__main__":
             max_needs[new_k] = False
         min_needs[new_k] &= v
         max_needs[new_k] |= v
+
+    print("Some post work complete, writing report")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", help="Path to write report to")
@@ -139,3 +144,6 @@ if __name__ == "__main__":
             a, z = min_needs[(date, node.name)], max_needs[(date, node.name)]
             reporter.write(node.name, "\u2588", color=color_guide[(a, z)])
     reporter.close()
+
+    print("Thank you.")
+
