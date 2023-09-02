@@ -84,7 +84,8 @@ def get_expected_input_ts(
     for ind, d_node, gh in shared_logic.dependencies(game_hash, node, node_by_name):
         while ind >= len(max_tss):
             max_tss.append(0)
-        if dependent_node_ts := lookups.timestamp_lookup(f_node).get(gh, None):
+        dependent_node_ts = lookups.timestamp_lookup(d_node).get(gh, None)
+        if dependent_node_ts:
             max_tss[ind] = max(max_tss[ind], dependent_node_ts[1])
     return timestamp_manager.ts_manager_factory(max_tss)
 
