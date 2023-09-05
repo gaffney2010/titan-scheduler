@@ -5,3 +5,5 @@ See full documentation for Titan project [here](https://docs.google.com/document
 
 This is a fork of the original titan scheduler.  This uses airflow.
 
+Assumes that all the docker containers are running.  You can do this from titan-models with `make deploy_local`.
+

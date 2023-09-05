@@ -102,7 +102,9 @@ def dependencies(
         )
         for d in dependent_features:
             d_node = node_by_name[d]
-            for gh in sorted(dependent_hashes, key=lambda h: lookups.game_detail_lookup()[h].date):
+            for gh in sorted(
+                dependent_hashes, key=lambda h: lookups.game_detail_lookup()[h].date
+            ):
                 yield (ind, d_node, gh)
         # Some arcane code cares about the different dependency families
         ind += 1

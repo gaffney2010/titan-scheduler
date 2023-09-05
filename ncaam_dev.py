@@ -1,3 +1,9 @@
+# I need to hack this here, I'm sorry
+import os
+
+os.environ["TITAN_ENV"] = "dev"
+os.environ["SPORT"] = "ncaam"
+
 from earthlings.titan_logging import titan_logger
 import logging
 import os
@@ -8,72 +14,21 @@ tlogger = titan_logger("batch_scheduler", False, file_level=level, console_level
 #########################
 # Everything above this line must be set before other imports, because logging is dumb.
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, Set
 
-import docker
-import retrying
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.operators.dummy import DummyOperator
 import titanpublic
 from tqdm import tqdm
 
+from dags import ncaam
 from shared import lookups, shared_logic, timestamp_manager, queuer
-from shared.shared_types import GameHash, Node, NodeName
+from shared.shared_types import Date, GameHash, Node, NodeName
 
-
-WAIT_FIXED_SECS = 3
-NUM_RETRIES = 1
 
 TITAN_RECEIVER = "titan-receiver"
-
-DContainer = Any  # docker-py doesn't expose Container type
-
-
-def get_ipaddr() -> int:
-    return os.system(
-        "ifconfig | sed -n 's/.*\(192\.[0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p'"
-    )
-
-
-class DockerContainer(object):
-    def __init__(self, docker_image: str, lazy: bool = False):
-        self.started = False
-        self.docker_image = docker_image
-        if not lazy:
-            self.start_container()
-
-    def start_container(self):
-        if self.started:
-            return
-
-        tlogger.console_logger.error(self.docker_image)
-        client = docker.from_env()
-        # TODO: Pass this in
-        self.model_container = client.containers.run(
-            self.docker_image,
-            environment={
-                "TITAN_ENV": os.environ.get("TITAN_ENV", "dev"),
-                "SPORT": os.environ.get("SPORT", "ncaam"),
-                "PARENT_IP": get_ipaddr(),
-            },
-            # This uses local ports, along with passing IP, I think...
-            network="host",
-            volumes={
-                "/home/tjg/logs": {
-                    "bind": "/logs",
-                    "mode": "rw",
-                }
-            },
-            detach=True,
-        )
-        self.started = True
-
-    def __enter__(self) -> DContainer:
-        return self
-
-    # TODO: Delete image somehow
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.started:
-            self.model_container.stop()
-            self.model_container.remove()
 
 
 # Return timestamp object
@@ -81,7 +36,7 @@ def get_expected_input_ts(
     game_hash: GameHash, node: Node, node_by_name: Dict[NodeName, Node]
 ) -> timestamp_manager.InputTimestampManager:
     max_tss = list()
-    for ind, d_node, gh in shared_logic.dependencies(game_hash, node, node_by_name):
+    for ind, d_node, gh, _ in shared_logic.dependencies(game_hash, node, node_by_name):
         while ind >= len(max_tss):
             max_tss.append(0)
         dependent_node_ts = lookups.timestamp_lookup(d_node).get(gh, None)
@@ -90,23 +45,19 @@ def get_expected_input_ts(
     return timestamp_manager.ts_manager_factory(max_tss)
 
 
-@retrying.retry(
-    wait_fixed=WAIT_FIXED_SECS * 1000,
-    stop_max_attempt_number=NUM_RETRIES,
-)
-def run_feature(
-    node: Node, node_by_name: Dict[NodeName, Node], container: DockerContainer
-) -> None:
-    tlogger.console_logger.info(f"Starting feature {node.name}...")
+def run_feature(node: Node, node_by_name: Dict[NodeName, Node], for_date: Date) -> None:
+    if not node.docker_image:
+        tlogger.console_logger.info(f"Nothing to run for {node.name}")
+        return
+
+    tlogger.console_logger.info(f"Starting feature {node.name} on date {for_date}...")
     channel = titanpublic.queuer.get_redis_channel()
     channel.queue_declare(node.name)
 
-    # Clear out old messages, this is cleaner
-    channel.queue_clear(TITAN_RECEIVER)
-    channel.queue_clear(node.name)
-
     queued_games: Set[GameHash] = set()
     for game_hash in lookups.game_detail_lookup().keys():
+        if game_hash not in lookups.game_hash_lookup()[for_date]:
+            continue
         expected_input_ts = get_expected_input_ts(game_hash, node, node_by_name)
         actual_input_ts = lookups.timestamp_lookup(node).get(game_hash, (0, 0))[0]
         if actual_input_ts < expected_input_ts.max_ts():
@@ -117,6 +68,10 @@ def run_feature(
                 game_hash,
                 expected_input_ts,
             )
+
+    if not queued_games:
+        tlogger.console_logger.info(f"No games to queue")
+        return
 
     tlogger.console_logger.info(f"Queued up {len(queued_games)} games...")
     t = tqdm(total=len(queued_games))
@@ -171,9 +126,8 @@ def run_feature(
         return len(queued_games) > 0
 
     if not still_waiting():
+        t.close()
         return
-
-    container.start_container()
 
     # Wait here until we've gotten success messages for each game.
     channel.consume_while_condition(TITAN_RECEIVER, mark_success, still_waiting)
@@ -181,41 +135,59 @@ def run_feature(
     t.close()
 
 
+# Define your DAG
+airflow_dag = DAG(
+    "ncaam_dev",
+    schedule_interval="@daily",
+    start_date=datetime(2020, 1, 1),
+    catchup=True,
+    default_args={
+        "owner": "airflow",
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    },
+)
+
+
+dag = ncaam.graph
+titanpublic.queuer.get_redis_channel().queue_declare(TITAN_RECEIVER)
+node_by_name = {node.name: node for node in dag}
+
+daily_nodes = dict()
+cumu_nodes = dict()
+
+for node in dag:
+
+    def run_this_node(**kwargs):
+        date_string = kwargs["ds"]
+        date_obj = datetime.strptime(date_string, "%Y-%m-%d")
+        ds = int(date_obj.strftime("%Y%m%d"))
+        run_feature(node, node_by_name, ds)
+
+    daily_nodes[node.name] = PythonOperator(
+        task_id=f"daily_{node.name}",
+        python_callable=run_this_node,
+        provide_context=True,
+        depends_on_past=False,
+        dag=airflow_dag,
+    )
+
+    cumu_nodes[node.name] = DummyOperator(
+        task_id=f"cumu_{node.name}",
+        depends_on_past=True,
+        dag=airflow_dag,
+    )
+
+    daily_nodes[node.name] >> cumu_nodes[node.name]
+
+    for node_names, _, depends_on_past in node.dependencies:
+        for node_name in node_names:
+            if depends_on_past:
+                cumu_nodes[node_name] >> daily_nodes[node.name]
+            else:
+                daily_nodes[node.name]
+
+
 if __name__ == "__main__":
-    sport = os.environ.get("SPORT")
-    tlogger.console_logger.info(f"Running for sport = {sport}")
-    if "ncaam" == sport:
-        from dags import ncaam
+    airflow_dag.test()
 
-        dag = ncaam.graph
-
-    # if "ncaaw" == sport:
-    #     from dags import ncaaw
-
-    #     dag = ncaaw.graph
-
-    # if "ncaaf" == sport:
-    #     from dags import ncaaf
-
-    #     dag = ncaaf.graph
-
-    node_by_name = {node.name: node for node in dag}
-
-    # Build a single queue for everything
-    titanpublic.queuer.get_redis_channel().queue_declare(TITAN_RECEIVER)
-
-    # Run all the features in order, grouping together consecutive docker_image where
-    #  possible.
-    st, en = 0, 0
-    while st < len(dag):
-        while en < len(dag) and dag[en].docker_image == dag[st].docker_image:
-            en += 1
-
-        this_image = dag[st].docker_image
-        if this_image is not None:
-            with DockerContainer(this_image, lazy=True) as container:
-                for i in range(st, en):
-                    tlogger.console_logger.error(f"Running {dag[i].name}")
-                    run_feature(dag[i], node_by_name, container)
-
-        st = en
