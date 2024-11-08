@@ -94,7 +94,7 @@ def dependencies(
     game_hash: GameHash, node: Node, node_by_name: Dict[NodeName, Node]
 ) -> Iterator[Tuple[int, Node, GameHash]]:
     ind = 0
-    for dependent_features, dependent_hash_generator in node.dependencies:
+    for dependent_features, dependent_hash_generator, _ in node.dependencies:
         dependent_hashes = dependent_hash_generator(
             game_hash,
             lookups.game_hash_lookup(),

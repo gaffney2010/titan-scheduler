@@ -36,7 +36,8 @@ def get_expected_input_ts(
     game_hash: GameHash, node: Node, node_by_name: Dict[NodeName, Node]
 ) -> timestamp_manager.InputTimestampManager:
     max_tss = list()
-    for ind, d_node, gh, _ in shared_logic.dependencies(game_hash, node, node_by_name):
+    # This unpacks already
+    for ind, d_node, gh in shared_logic.dependencies(game_hash, node, node_by_name):
         while ind >= len(max_tss):
             max_tss.append(0)
         dependent_node_ts = lookups.timestamp_lookup(d_node).get(gh, None)
@@ -141,6 +142,7 @@ airflow_dag = DAG(
     schedule_interval="@daily",
     start_date=datetime(2020, 1, 1),
     catchup=True,
+    max_active_runs=32,
     default_args={
         "owner": "airflow",
         "retries": 1,
@@ -185,7 +187,7 @@ for node in dag:
             if depends_on_past:
                 cumu_nodes[node_name] >> daily_nodes[node.name]
             else:
-                daily_nodes[node.name]
+                daily_nodes[node_name] >> daily_nodes[node.name]
 
 
 if __name__ == "__main__":
